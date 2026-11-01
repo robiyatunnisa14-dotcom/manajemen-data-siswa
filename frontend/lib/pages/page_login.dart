@@ -1,310 +1,238 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:aplikasi_guru/pages/page_dashboard.dart';
-
-// WARNA
-const _sage = Color(0xFF668B70);
-const _darkGreen = Color(0xFF355641);
-const _background = Color(0xFFF5F5EF);
-const _peach = Color(0xFFF2D8C9);
-const _mint = Color(0xFFDCE8D8);
-const _grey = Color(0xFF858B83);
-
-// DATA LOGIN (dipakai halaman lain, mis. untuk header Authorization)
-class Session {
-  static String? token;
-  static int? id;
-  static String? nama;
-}
+import 'package:frontend/main.dart'; // untuk baseUrl
+import 'package:frontend/pages/page_dashboard.dart';
 
 class PageLogin extends StatefulWidget {
   const PageLogin({super.key});
-
   @override
   State<PageLogin> createState() => _PageLoginState();
 }
 
 class _PageLoginState extends State<PageLogin> {
-  bool passwordVisible = false;
-  bool isLoading = false;
+  final _formKey = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
 
-  final TextEditingController txtEmail = TextEditingController();
-  final TextEditingController txtPassword = TextEditingController();
+  bool _sembunyi = true; // true = password tertutup, false = terlihat
+  bool _loading = false;
 
-  // Web / desktop: localhost | Emulator Android: 10.0.2.2 | HP asli: IP laptop
-  String get baseUrl =>
-      kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
-
-  // FUNGSI LOGIN API (POST /login)
-  Future<void> prosesLogin() async {
-    FocusScope.of(context).unfocus();
-
-    if (txtEmail.text.trim().isEmpty || txtPassword.text.isEmpty) {
-      tampilkanPesan('Email dan password wajib diisi.');
-      return;
-    }
-
-    setState(() => isLoading = true);
-
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/login'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'email': txtEmail.text.trim(),
-              'password': txtPassword.text,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      // 401 (salah password) tetap berisi JSON { status: false, message }
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map<String, dynamic>) throw const FormatException();
-      final data = decoded;
-
-      if (!mounted) return;
-
-      if (data['status'] == true) {
-        // simpan token & data user untuk halaman lain
-        Session.token = data['token'];
-        Session.id = data['user']['id'];
-        Session.nama = data['user']['nama'];
-
-        tampilkanPesan('Login berhasil!');
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const PageDashboard()),
-        );
-      } else {
-        tampilkanPesan(data['message'] ?? 'Email atau password salah');
-      }
-    } on FormatException {
-      tampilkanPesan('Respons API tidak valid.');
-    } on TimeoutException {
-      tampilkanPesan('Server tidak merespons. Coba lagi.');
-    } on http.ClientException {
-      tampilkanPesan('Tidak bisa terhubung ke server. Pastikan API sudah jalan.');
-    } catch (e) {
-      tampilkanPesan('Terjadi kesalahan: $e');
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
   }
 
-  // MENAMPILKAN PESAN
-  void tampilkanPesan(String pesan) {
-    if (!mounted) return;
+  // Pesan kecil di bawah layar: hijau = berhasil, merah = gagal
+  void _pesan(String teks, {bool error = false}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(pesan)));
+      ..showSnackBar(SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor:
+            error ? const Color(0xFFD96C6C) : const Color(0xFF5DAE8B),
+        content: Text(teks),
+      ));
   }
 
-  // STYLE INPUT (dipakai email & password)
-  InputDecoration _inputDecoration({
-    required String label,
-    required IconData icon,
-    Widget? suffixIcon,
-  }) {
+  // Gaya kotak input (dipakai email dan password)
+  InputDecoration _dekorasi(String label, IconData ikon, {Widget? suffix}) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, color: _sage),
-      suffixIcon: suffixIcon,
+      prefixIcon: Icon(ikon),
+      suffixIcon: suffix,
       filled: true,
-      fillColor: const Color(0xFFFAFAF7),
-      contentPadding: const EdgeInsets.symmetric(vertical: 17, horizontal: 15),
+      fillColor: Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Color(0xFFE8EBE3)),
+        borderSide: BorderSide(color: Colors.grey.shade300),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _sage, width: 1.5),
+        borderSide: const BorderSide(color: Color(0xFF6B8CCE), width: 2),
       ),
     );
   }
 
-  Widget _dot(Color color) => Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  @override
-  void dispose() {
-    txtEmail.dispose();
-    txtPassword.dispose();
-    super.dispose();
+    setState(() => _loading = true);
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$baseUrl/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': _email.text.trim(),
+              'password': _password.text,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(res.body);
+      if (!mounted) return;
+
+      if (res.statusCode == 200 && data['status'] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PageDashboard(nama: '${data['user']['nama']}'),
+          ),
+        );
+      } else {
+        _pesan(data['message'] ?? 'Login gagal', error: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _pesan(
+          'Tidak dapat terhubung ke server. Pastikan backend menyala dan alamat benar.',
+          error: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _background,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 400),
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: _darkGreen.withValues(alpha: 0.07),
-                    blurRadius: 25,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // IKON APLIKASI
-                  Container(
-                    width: 76,
-                    height: 76,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE4EEE3),
-                      borderRadius: BorderRadius.circular(22),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          // gradasi pastel: biru lembut, lavender, rose muda
+          gradient: LinearGradient(
+            colors: [Color(0xFF8FA6E0), Color(0xFFB4A5E2), Color(0xFFF2B8C6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.white,
+                      child: Icon(Icons.school_rounded,
+                          size: 44, color: Color(0xFF6B8CCE)),
                     ),
-                    child: const Icon(
-                      Icons.school_outlined,
-                      size: 42,
-                      color: _sage,
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Data Siswa',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // JUDUL
-                  const Text(
-                    'Selamat Datang!',
-                    style: TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.bold,
-                      color: _darkGreen,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Masuk untuk melanjutkan',
+                      style: TextStyle(color: Colors.white.withAlpha(230)),
                     ),
-                  ),
+                    const SizedBox(height: 28),
+                    Card(
+                      elevation: 4,
+                      shadowColor: Colors.black26,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            children: [
+                              // ---------- EMAIL ----------
+                              TextFormField(
+                                controller: _email,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration:
+                                    _dekorasi('Email', Icons.email_outlined),
+                                validator: (v) {
+                                  final t = (v ?? '').trim();
+                                  if (t.isEmpty) return 'Email wajib diisi';
+                                  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                                      .hasMatch(t)) {
+                                    return 'Format email tidak valid';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
 
-                  const SizedBox(height: 8),
-
-                  const Text(
-                    'Silakan login untuk melanjutkan',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: _grey),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // INPUT EMAIL
-                  TextField(
-                    controller: txtEmail,
-                    enabled: !isLoading,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: _inputDecoration(
-                      label: 'Email',
-                      icon: Icons.email_outlined,
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  // INPUT PASSWORD
-                  TextField(
-                    controller: txtPassword,
-                    enabled: !isLoading,
-                    obscureText: !passwordVisible,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      if (!isLoading) prosesLogin();
-                    },
-                    decoration: _inputDecoration(
-                      label: 'Password',
-                      icon: Icons.lock_outline,
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          passwordVisible
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          color: _sage,
-                        ),
-                        onPressed: isLoading
-                            ? null
-                            : () => setState(
-                                  () => passwordVisible = !passwordVisible,
+                              // ---------- PASSWORD + ICON MATA ----------
+                              TextFormField(
+                                controller: _password,
+                                obscureText: _sembunyi,
+                                onFieldSubmitted: (_) => _login(),
+                                decoration: _dekorasi(
+                                  'Password',
+                                  Icons.lock_outline,
+                                  suffix: IconButton(
+                                    // mata tercoret = tertutup, mata biasa = terlihat
+                                    icon: Icon(
+                                      _sembunyi
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                    ),
+                                    onPressed: () {
+                                      setState(() => _sembunyi = !_sembunyi);
+                                    },
+                                  ),
                                 ),
-                      ),
-                    ),
-                  ),
+                                validator: (v) => (v == null || v.isEmpty)
+                                    ? 'Password wajib diisi'
+                                    : null,
+                              ),
+                              const SizedBox(height: 24),
 
-                  const SizedBox(height: 28),
-
-                  // TOMBOL LOGIN
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : prosesLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _sage,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: _sage.withValues(alpha: 0.6),
-                        disabledForegroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                              // ---------- TOMBOL MASUK ----------
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: FilledButton(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF6B8CCE),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                  onPressed: _loading ? null : _login,
+                                  child: _loading
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              color: Colors.white),
+                                        )
+                                      : const Text(
+                                          'Masuk',
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      child: isLoading
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              'LOGIN',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                              ),
-                            ),
                     ),
-                  ),
-
-                  const SizedBox(height: 22),
-
-                  // FOOTER
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _dot(_peach),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Aplikasi Guru',
-                        style: TextStyle(color: _grey, fontSize: 13),
-                      ),
-                      const SizedBox(width: 8),
-                      _dot(_mint),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

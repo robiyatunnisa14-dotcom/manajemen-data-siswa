@@ -1,12 +1,10 @@
-const express = require('express');
-const controller = require('../controllers/siswaController');
+const router = require('express').Router();
+const siswaController = require('../controllers/siswaController');
 
-const router = express.Router();
-
-router.get('/', controller.getAllSiswa);
-router.get('/:id', controller.getSiswaById);
-router.post('/', controller.createSiswa);
-router.put('/:id', controller.updateSiswa);
-router.delete('/:id', controller.deleteSiswa);
+router.get('/', siswaController.getAll);
+router.get('/:id', siswaController.getById);
+router.post('/', siswaController.create);
+router.put('/:id', siswaController.update);
+router.delete('/:id', siswaController.remove);
 
 module.exports = router;

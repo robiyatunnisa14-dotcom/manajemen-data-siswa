@@ -1,7 +1,7 @@
-
 import 'package:flutter/material.dart';
-import 'pages/siswa_page.dart';
+import 'package:frontend/pages/page_login.dart';
 
+const String baseUrl = 'http://10.237.186.105:3000';
 void main() {
   runApp(const MyApp());
 }
@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      home: PageLogin(),
+      home: const PageLogin(),
     );
   }
 }
